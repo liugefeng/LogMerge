@@ -173,14 +173,16 @@ if __name__ == '__main__':
     num = len(sys.argv)
 
     if num < 2:
-        print("file not specified.")
-        exit(0)
+        print("not log file specified.")
+        sys.exit()
 
+    # remove result file already exists
     result_file = "main_log_merge"
     if os.path.exists(result_file):
         print("rm " + result_file)
         os.system("rm " + result_file)
 
+    # get files to be merged from Parameters
     lst_files = []
     for item in sys.argv[1:]:
         item = item.strip()
@@ -212,7 +214,6 @@ if __name__ == '__main__':
                             lst_files.append(sub_item)
             else:
                 print("error format for item1 %s." % item)
-
             continue
         else:
             print("error format item2: %s." % item)
