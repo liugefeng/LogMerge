@@ -141,7 +141,15 @@ def get_line_info_from_file(lst_files, file_index, lst_timeinfo, map_timeinfo):
 
     fd.close()
 
-# get files under specified directory (not recursive)
+# =============================================================================
+# Function : get_files_by_dir
+# Author   : Liu Gefeng
+# Date     : 2021-01-15 22:22
+# Comment  : get files under specified directory (not recursive)
+# Parameter: dir: from which the function get files
+#          : lst_files: log file list
+# Note     :
+# =============================================================================
 def get_files_by_dir(dir, lst_files):
     # if path exists
     if not os.path.exists(dir):
