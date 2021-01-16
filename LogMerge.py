@@ -2,12 +2,12 @@
 # coding:utf-8
 
 # =============================================================================
-# Function: 按时间先后顺序，合并Log文件
+# Function: LogMerge
 # Author  : Liu Gefeng
-# Comment : 考虑到log文件可能上G的情况，为了保证脚本的通用性，没有将log文件一次性读到内存中进行处理
-# Note    : 1、该脚本文件目前只在mtk平台上进行了调试
-#         : 2、脚本只能在python3.3+上测试， python 2.7尚不兼容
-# History : 2019-11-02 初步完成开发
+# Comment : merge sys and main log from MTK
+# Note    : 1 merge MTK main/sys/radio log
+#         : 2 support python version 3.x
+# History : 2019-11-02 finished develop
 # =============================================================================
 
 import sys
@@ -17,43 +17,93 @@ import re
 import datetime
 import time
 
-# 根据log文件中的单行内容获取时间戳
+# =============================================================================
+# Function : regexp 
+# Author   : Liu Gefeng
+# Date     : 2020-12-18 17:36
+# Comment  : regular expression
+# Parameter: str: 
+# Note     :
+# =============================================================================
+def regexp(str, regstr, ignore_case = False):
+    flags = 0
+    if not ignore_case:
+        flags |= re.I
+
+    match = re.search(regstr, str, flags)
+    if match:
+        return match
+
+    return None
+
+# =============================================================================
+# Function : getTimeFromLine
+# Author   : Liu Gefeng
+# Date     : 2021-01-15 22:22
+# Comment  : get time info from specified line
+# Parameter: 
+# Note     :
+# =============================================================================
 def getTimeFromLine(line_text):
     # 10-18 09:19:55.061396  1037  1122 E ViewRootImpl:     at com.android.server.ServiceThread.run(ServiceThread.java:44)
-    pat_log = re.compile(r'^\s*(\d+\-\d+\s+\d{2}:\d{2}:\d{2}\.\d+)\s+.*$')
-    result = pat_log.search(line_text)
+    result = regexp(line_text, r'^\s*(\d+\-\d+\s+\d{2}:\d{2}:\d{2}\.\d+)\s+.*$')
     if result:
         return result.group(1)
     else:
         return ""
 
-# 标记单行所在的文件索引(文件在脚本调用参数的文件列表中的位置)以及该行在文件中的行号
+# =============================================================================
+# Class    : LineInfo
+# Author   : Liu Gefeng
+# Date     : 2021-01-15 22:22
+# Comment  : line info class
+# Parameter: file_index: specified file index in list to be merged
+#          : line_no: line no
+# Note     :
+# =============================================================================
 class LineInfo:
     def __init__(self, file_index, line_no):
         self.file_index = file_index
         self.line_no = line_no
 
-# 包含相同时间戳的行
-# Note: 对于没有时间戳的行，其时间默认为与后面紧连的时间相同
+# =============================================================================
+# Class    : TimeInfo
+# Author   : Liu Gefeng
+# Date     : 2021-01-15 22:22
+# Comment  : time info
+# Parameter: timestr time string from line text
+#          : lst_lines to store lines at current time
+# Note     :
+# =============================================================================
 class TimeInfo:
     def __init__(self, timestr):
         self.timestr = timestr
         self.lst_lines = []
 
-    # 添加时间相同行(可能来自不同文件)
     def add_line_info(self, line_info):
         if not line_info:
             return
 
         self.lst_lines.append(line_info)
 
+# =============================================================================
+# Function : get_line_info_from_file
+# Author   : Liu Gefeng
+# Date     : 2021-01-15 22:22
+# Comment  : get line info from specified log file 
+# Parameter: lst_files: log file list
+#          : file_index: file index from log file list
+#          : lst_timeinfo: time info list
+#          : map_timeinfo: time info map
+# Note     :
+# =============================================================================
 def get_line_info_from_file(lst_files, file_index, lst_timeinfo, map_timeinfo):
     log_file = lst_files[file_index]
     if not os.path.exists(log_file):
         print("file " + log_file + " not exist!")
         return
 
-    print("getting line info for file " + log_file + " ...")
+    print("scanning file %s ..." % log_file)
 
     lst_no_time = []
     timeinfo = None
@@ -91,6 +141,34 @@ def get_line_info_from_file(lst_files, file_index, lst_timeinfo, map_timeinfo):
 
     fd.close()
 
+# get files under specified directory (not recursive)
+def get_files_by_dir(dir, lst_files):
+    # if path exists
+    if not os.path.exists(dir):
+        print("path " + dir + " not exist!")
+        return
+
+    # add files
+    if os.path.isfile(dir):
+        if dir.startswith("."):
+            return
+
+        lst_files.append(dir)
+        return
+
+    # add files and recursive find files for subdir
+    lst_items = os.listdir(dir)
+    for item in lst_items:
+        if item.startswith("."):
+            continue
+
+        if not dir.endswith("/"):
+            dir += "/"
+        item = dir + item
+
+        if os.path.isfile(item):
+            lst_files.append(item)
+
 if __name__ == '__main__':
     num = len(sys.argv)
 
@@ -98,11 +176,52 @@ if __name__ == '__main__':
         print("file not specified.")
         exit(0)
 
-    lst_files = sys.argv[1:]
-    log_info = "merge file: "
-    for item in lst_files:
-        log_info = log_info + item + ", "
-    print(log_info + "\n")
+    result_file = "main_log_merge"
+    if os.path.exists(result_file):
+        print("rm " + result_file)
+        os.system("rm " + result_file)
+
+    lst_files = []
+    for item in sys.argv[1:]:
+        item = item.strip()
+
+        # current item is file
+        if os.path.isfile(item):
+            if not item in lst_files:
+                lst_files.append(item)
+            else:
+                print("file %s already exists!" % item)
+
+            continue
+
+        # current item is match string
+        elif item.endswith("*"):
+            result = regexp(item, r'(.+/)?([^/]+)\*$')
+            if result:
+                file_path = result.group(1)
+                if not file_path:
+                    file_path = "./"
+
+                file_match = result.group(2)
+                lst_match_files = []
+                get_files_by_dir(file_path, lst_match_files)
+                for sub_item in lst_match_files:
+                    sub_result = regexp(sub_item, r'.*/' + file_match + r'[^/]*$')
+                    if sub_result:
+                        if not sub_item in lst_files:
+                            lst_files.append(sub_item)
+            else:
+                print("error format for item1 %s." % item)
+
+            continue
+        else:
+            print("error format item2: %s." % item)
+
+    if len(lst_files) < 2:
+        print("log file to be merge is < 2, merge canceled.")
+        sys.exit()
+    else:
+        print("merge file: %s." % ", ".join(lst_files))
 
     map_timeinfo = {}
     lst_timeinfo = []
